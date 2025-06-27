@@ -1,10 +1,18 @@
-// lib/rateLimiter.js - Rate limiting implementation for API protection
+// src/lib/rateLimiter.js - Complete rate limiting implementation for AI Travel Planner
+
+/**
+ * In-memory rate limiter for development and fallback
+ * For production, consider using Redis or a dedicated service
+ */
 
 const rateLimit = new Map();
 
 /**
- * Simple in-memory rate limiter
- * For production, consider using Redis or a dedicated rate limiting service
+ * Simple rate limiter function
+ * @param {string} identifier - Unique identifier (IP, user ID, etc.)
+ * @param {number} limit - Maximum requests allowed
+ * @param {number} windowMs - Time window in milliseconds
+ * @returns {boolean} - Whether request is allowed
  */
 export function rateLimiter(identifier, limit = 5, windowMs = 60000) {
   const now = Date.now();
@@ -77,12 +85,19 @@ export class AdvancedRateLimiter {
     if (data.blockedUntil && now < data.blockedUntil) {
       return {
         allowed: false,
+        remaining: 0,
         resetTime: data.blockedUntil,
-        reason: "blocked",
+        blocked: true,
       };
     }
 
-    // Remove old requests outside the window
+    // Reset block if expired
+    if (data.blockedUntil && now >= data.blockedUntil) {
+      data.blockedUntil = null;
+      data.requests = [];
+    }
+
+    // Filter valid requests within window
     const windowStart = now - config.window;
     data.requests = data.requests.filter(
       (timestamp) => timestamp > windowStart
@@ -90,28 +105,36 @@ export class AdvancedRateLimiter {
 
     // Check if limit exceeded
     if (data.requests.length >= config.requests) {
-      // Block the identifier
+      // Block for specified duration
       data.blockedUntil = now + config.blockDuration;
+      rateLimit.set(key, data);
 
       return {
         allowed: false,
+        remaining: 0,
         resetTime: data.blockedUntil,
-        reason: "rate_limit_exceeded",
-        requestCount: data.requests.length,
-        limit: config.requests,
+        blocked: true,
       };
     }
 
     // Add current request
     data.requests.push(now);
-    data.blockedUntil = null; // Clear any previous block
+    rateLimit.set(key, data);
 
     return {
       allowed: true,
       remaining: config.requests - data.requests.length,
       resetTime: windowStart + config.window,
-      requestCount: data.requests.length,
+      blocked: false,
     };
+  }
+
+  /**
+   * Reset limits for a specific identifier/endpoint
+   */
+  reset(identifier, endpoint = "default") {
+    const key = `${identifier}:${endpoint}`;
+    rateLimit.delete(key);
   }
 
   /**
@@ -122,163 +145,21 @@ export class AdvancedRateLimiter {
     const cutoff = now - 24 * 60 * 60 * 1000; // 24 hours
 
     for (const [key, data] of rateLimit.entries()) {
-      // Remove entries older than 24 hours
       if (data.requests && data.requests.length > 0) {
         const latestRequest = Math.max(...data.requests);
-        if (latestRequest < cutoff) {
+        if (
+          latestRequest < cutoff &&
+          (!data.blockedUntil || data.blockedUntil < now)
+        ) {
           rateLimit.delete(key);
         }
       }
-
-      // Remove expired blocks
-      if (data.blockedUntil && data.blockedUntil < now) {
-        data.blockedUntil = null;
-      }
     }
   }
-
-  /**
-   * Get current status for identifier
-   */
-  getStatus(identifier, endpoint = "default") {
-    const config = this.limits.get(endpoint) || this.defaultConfig;
-    const key = `${identifier}:${endpoint}`;
-    const data = rateLimit.get(key);
-
-    if (!data) {
-      return {
-        requestCount: 0,
-        remaining: config.requests,
-        blocked: false,
-      };
-    }
-
-    const now = Date.now();
-    const windowStart = now - config.window;
-    const validRequests = data.requests.filter(
-      (timestamp) => timestamp > windowStart
-    );
-
-    return {
-      requestCount: validRequests.length,
-      remaining: Math.max(0, config.requests - validRequests.length),
-      blocked: data.blockedUntil && now < data.blockedUntil,
-      blockedUntil: data.blockedUntil,
-    };
-  }
-}
-
-// Create global instance
-export const advancedRateLimiter = new AdvancedRateLimiter();
-
-// Set up endpoint-specific limits
-advancedRateLimiter.setLimit("auth/signup", {
-  requests: 5,
-  window: 900000, // 15 minutes
-  blockDuration: 900000, // 15 minutes
-});
-
-advancedRateLimiter.setLimit("auth/signin", {
-  requests: 10,
-  window: 900000, // 15 minutes
-  blockDuration: 600000, // 10 minutes
-});
-
-advancedRateLimiter.setLimit("api/generate-trip", {
-  requests: 20,
-  window: 3600000, // 1 hour
-  blockDuration: 300000, // 5 minutes
-});
-
-advancedRateLimiter.setLimit("api/bookings", {
-  requests: 50,
-  window: 3600000, // 1 hour
-  blockDuration: 300000, // 5 minutes
-});
-
-/**
- * Express middleware for rate limiting
- */
-export function rateLimitMiddleware(endpoint = "default") {
-  return (req, res, next) => {
-    const identifier = req.ip || req.headers["x-forwarded-for"] || "unknown";
-    const result = advancedRateLimiter.isAllowed(identifier, endpoint);
-
-    // Add rate limit headers
-    res.setHeader("X-RateLimit-Remaining", result.remaining || 0);
-    res.setHeader("X-RateLimit-Reset", result.resetTime || Date.now());
-
-    if (!result.allowed) {
-      res.setHeader("X-RateLimit-Limit", result.limit || 0);
-      res.setHeader(
-        "Retry-After",
-        Math.ceil((result.resetTime - Date.now()) / 1000)
-      );
-
-      return res.status(429).json({
-        error: "Too Many Requests",
-        message:
-          result.reason === "blocked"
-            ? "You have been temporarily blocked due to excessive requests"
-            : "Rate limit exceeded. Please try again later.",
-        retryAfter: result.resetTime,
-        requestCount: result.requestCount,
-      });
-    }
-
-    res.setHeader(
-      "X-RateLimit-Limit",
-      result.limit || advancedRateLimiter.defaultConfig.requests
-    );
-    next();
-  };
 }
 
 /**
- * Next.js API route wrapper for rate limiting
- */
-export function withRateLimit(handler, endpoint = "default") {
-  return async (req, res) => {
-    const identifier =
-      req.headers["x-forwarded-for"] ||
-      req.connection?.remoteAddress ||
-      "unknown";
-    const result = advancedRateLimiter.isAllowed(identifier, endpoint);
-
-    // Add rate limit headers
-    res.setHeader("X-RateLimit-Remaining", result.remaining || 0);
-    res.setHeader("X-RateLimit-Reset", result.resetTime || Date.now());
-
-    if (!result.allowed) {
-      res.setHeader("X-RateLimit-Limit", result.limit || 0);
-      res.setHeader(
-        "Retry-After",
-        Math.ceil((result.resetTime - Date.now()) / 1000)
-      );
-
-      return res.status(429).json({
-        error: "Too Many Requests",
-        message:
-          result.reason === "blocked"
-            ? "You have been temporarily blocked due to excessive requests"
-            : "Rate limit exceeded. Please try again later.",
-        retryAfter: result.resetTime,
-        requestCount: result.requestCount,
-      });
-    }
-
-    res.setHeader(
-      "X-RateLimit-Limit",
-      result.limit || advancedRateLimiter.defaultConfig.requests
-    );
-
-    // Call the original handler
-    return handler(req, res);
-  };
-}
-
-/**
- * Rate limiter for specific user actions
+ * User action rate limiter for specific user actions
  */
 export class UserActionLimiter {
   constructor() {
@@ -288,8 +169,7 @@ export class UserActionLimiter {
   /**
    * Check if user action is allowed
    */
-  isActionAllowed(userId, action, limit = 5, windowMs = 3600000) {
-    // 1 hour default
+  checkUserAction(userId, action, limit = 10, windowMs = 60000) {
     const key = `${userId}:${action}`;
     const now = Date.now();
     const windowStart = now - windowMs;
@@ -299,8 +179,6 @@ export class UserActionLimiter {
     }
 
     const actions = this.userLimits.get(key);
-
-    // Filter out old actions
     const validActions = actions.filter((timestamp) => timestamp > windowStart);
 
     if (validActions.length >= limit) {
@@ -311,7 +189,6 @@ export class UserActionLimiter {
       };
     }
 
-    // Add current action
     validActions.push(now);
     this.userLimits.set(key, validActions);
 
@@ -348,67 +225,222 @@ export class UserActionLimiter {
   }
 }
 
-// Create global user action limiter
+// Create global instances
+export const advancedRateLimiter = new AdvancedRateLimiter();
 export const userActionLimiter = new UserActionLimiter();
+
+// Set up common endpoint limits
+advancedRateLimiter.setLimit("auth", {
+  requests: 5,
+  window: 900000, // 15 minutes
+  blockDuration: 1800000, // 30 minutes
+});
+
+advancedRateLimiter.setLimit("api", {
+  requests: 100,
+  window: 900000, // 15 minutes
+  blockDuration: 300000, // 5 minutes
+});
+
+advancedRateLimiter.setLimit("search", {
+  requests: 50,
+  window: 300000, // 5 minutes
+  blockDuration: 300000, // 5 minutes
+});
+
+advancedRateLimiter.setLimit("booking", {
+  requests: 10,
+  window: 600000, // 10 minutes
+  blockDuration: 600000, // 10 minutes
+});
 
 // Clean up every hour
 setInterval(() => {
+  advancedRateLimiter.cleanup();
   userActionLimiter.cleanup();
 }, 3600000);
 
 /**
- * Distributed rate limiter using Redis (for production)
+ * Redis-based rate limiter for production (optional)
  * Uncomment and configure if using Redis
  */
 
-import Redis from "ioredis";
+// Commented out to avoid build errors - install ioredis to use
+// import Redis from "ioredis";
 
 export class RedisRateLimiter {
   constructor(redisClient) {
-    this.redis = redisClient || new Redis(process.env.REDIS_URL);
+    // For now, fall back to in-memory if Redis not available
+    if (typeof window === "undefined" && process.env.REDIS_URL) {
+      try {
+        // Dynamically import Redis only on server-side
+        import("ioredis")
+          .then(({ default: Redis }) => {
+            this.redis = redisClient || new Redis(process.env.REDIS_URL);
+          })
+          .catch(() => {
+            console.warn("Redis not available - using in-memory rate limiting");
+            this.redis = null;
+          });
+      } catch (error) {
+        console.warn("Redis not available - using in-memory rate limiting");
+        this.redis = null;
+      }
+    } else {
+      this.redis = null;
+    }
   }
 
   async isAllowed(identifier, limit = 100, windowMs = 900000) {
-    const key = `rate_limit:${identifier}`;
-    const now = Date.now();
-    const window = Math.floor(now / windowMs);
-    const windowKey = `${key}:${window}`;
-
-    const pipeline = this.redis.pipeline();
-    pipeline.incr(windowKey);
-    pipeline.expire(windowKey, Math.ceil(windowMs / 1000));
-
-    const results = await pipeline.exec();
-    const requestCount = results[0][1];
-
-    if (requestCount > limit) {
+    // Fall back to in-memory if Redis not available
+    if (!this.redis) {
       return {
-        allowed: false,
-        remaining: 0,
-        resetTime: (window + 1) * windowMs,
-        requestCount,
+        allowed: rateLimiter(identifier, limit, windowMs),
+        remaining: limit,
+        resetTime: Date.now() + windowMs,
+        requestCount: 1,
       };
     }
 
-    return {
-      allowed: true,
-      remaining: limit - requestCount,
-      resetTime: (window + 1) * windowMs,
-      requestCount,
-    };
-  }
-
-  async getStatus(identifier, windowMs = 900000) {
     const key = `rate_limit:${identifier}`;
     const now = Date.now();
     const window = Math.floor(now / windowMs);
     const windowKey = `${key}:${window}`;
 
-    const requestCount = (await this.redis.get(windowKey)) || 0;
+    try {
+      const pipeline = this.redis.pipeline();
+      pipeline.incr(windowKey);
+      pipeline.expire(windowKey, Math.ceil(windowMs / 1000));
 
-    return {
-      requestCount: parseInt(requestCount),
-      resetTime: (window + 1) * windowMs,
-    };
+      const results = await pipeline.exec();
+      const requestCount = results[0][1];
+
+      if (requestCount > limit) {
+        return {
+          allowed: false,
+          remaining: 0,
+          resetTime: (window + 1) * windowMs,
+          requestCount,
+        };
+      }
+
+      return {
+        allowed: true,
+        remaining: limit - requestCount,
+        resetTime: (window + 1) * windowMs,
+        requestCount,
+      };
+    } catch (error) {
+      console.error("Redis rate limiter error:", error);
+      // Fall back to allowing request on error
+      return {
+        allowed: true,
+        remaining: limit,
+        resetTime: Date.now() + windowMs,
+        requestCount: 1,
+      };
+    }
+  }
+
+  async getStatus(identifier, windowMs = 900000) {
+    if (!this.redis) {
+      return {
+        requestCount: 0,
+        resetTime: Date.now() + windowMs,
+      };
+    }
+
+    const key = `rate_limit:${identifier}`;
+    const now = Date.now();
+    const window = Math.floor(now / windowMs);
+    const windowKey = `${key}:${window}`;
+
+    try {
+      const requestCount = (await this.redis.get(windowKey)) || 0;
+
+      return {
+        requestCount: parseInt(requestCount),
+        resetTime: (window + 1) * windowMs,
+      };
+    } catch (error) {
+      console.error("Redis rate limiter status error:", error);
+      return {
+        requestCount: 0,
+        resetTime: Date.now() + windowMs,
+      };
+    }
   }
 }
+
+/**
+ * Middleware helper for Express/Next.js API routes
+ */
+export function createRateLimitMiddleware(options = {}) {
+  const {
+    limit = 100,
+    windowMs = 900000, // 15 minutes
+    keyGenerator = (req) =>
+      req.ip || req.connection?.remoteAddress || "anonymous",
+    message = "Too many requests, please try again later.",
+    standardHeaders = true,
+    legacyHeaders = false,
+  } = options;
+
+  return async (req, res, next) => {
+    const key = keyGenerator(req);
+    const result = rateLimiter(key, limit, windowMs);
+
+    if (standardHeaders) {
+      res.setHeader("X-RateLimit-Limit", limit);
+      res.setHeader("X-RateLimit-Remaining", result ? limit - 1 : 0);
+      res.setHeader(
+        "X-RateLimit-Reset",
+        Math.ceil((Date.now() + windowMs) / 1000)
+      );
+    }
+
+    if (legacyHeaders) {
+      res.setHeader("X-Rate-Limit-Limit", limit);
+      res.setHeader("X-Rate-Limit-Remaining", result ? limit - 1 : 0);
+      res.setHeader(
+        "X-Rate-Limit-Reset",
+        Math.ceil((Date.now() + windowMs) / 1000)
+      );
+    }
+
+    if (!result) {
+      if (typeof res.status === "function") {
+        // Express-style response
+        return res.status(429).json({ error: message });
+      } else {
+        // Next.js API route style
+        res.statusCode = 429;
+        res.end(JSON.stringify({ error: message }));
+        return;
+      }
+    }
+
+    if (next) {
+      next();
+    }
+  };
+}
+
+/**
+ * Utility function to get client IP address
+ */
+export function getClientIp(req) {
+  return (
+    req.headers["x-forwarded-for"] ||
+    req.headers["x-real-ip"] ||
+    req.connection?.remoteAddress ||
+    req.socket?.remoteAddress ||
+    (req.connection?.socket ? req.connection.socket.remoteAddress : null) ||
+    "anonymous"
+  );
+}
+
+/**
+ * Default rate limiter instance for easy use
+ */
+export default rateLimiter;

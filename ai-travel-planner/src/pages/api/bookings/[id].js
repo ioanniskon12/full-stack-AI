@@ -1,5 +1,5 @@
 import dbConnect from "../../../lib/mongodb";
-import Booking from "../../../oldFile/models/Booking";
+import Booking from "@/models/Booking";
 import { isValidObjectId } from "mongoose";
 
 export default async function handler(req, res) {

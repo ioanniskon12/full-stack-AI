@@ -2,7 +2,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "../../auth/[...nextauth]";
 import dbConnect from "@/lib/mongodb";
-import Booking from "@/oldFile/models/Booking";
+import Booking from "@/models/Booking"; // Adjust the import path as necessary
 
 export default async function handler(req, res) {
   const session = await getServerSession(req, res, authOptions);

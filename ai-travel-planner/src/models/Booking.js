@@ -1,4 +1,4 @@
-// models/Booking.js - Standardized Booking model
+// src/models/Booking.js - Complete Comprehensive Model for All Phases
 import mongoose from "mongoose";
 
 const FlightSchema = new mongoose.Schema(
@@ -124,11 +124,9 @@ const HotelSchema = new mongoose.Schema(
     },
     checkIn: {
       type: Date,
-      required: [true, "Check-in date is required"],
     },
     checkOut: {
       type: Date,
-      required: [true, "Check-out date is required"],
     },
     roomType: {
       type: String,
@@ -151,12 +149,7 @@ const HotelSchema = new mongoose.Schema(
         default: 1,
       },
     },
-    amenities: [
-      {
-        type: String,
-        trim: true,
-      },
-    ],
+    amenities: [String],
     familyFriendly: {
       type: Boolean,
       default: false,
@@ -197,12 +190,7 @@ const HotelSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
-    images: [
-      {
-        type: String,
-        trim: true,
-      },
-    ],
+    images: [String],
   },
   { _id: false }
 );
@@ -230,6 +218,7 @@ const ActivitySchema = new mongoose.Schema({
       "shopping",
       "relaxation",
       "educational",
+      "family",
       "other",
     ],
     default: "sightseeing",
@@ -327,30 +316,10 @@ const ActivitySchema = new mongoose.Schema({
     type: String,
     trim: true,
   },
-  requirements: [
-    {
-      type: String,
-      trim: true,
-    },
-  ],
-  included: [
-    {
-      type: String,
-      trim: true,
-    },
-  ],
-  excluded: [
-    {
-      type: String,
-      trim: true,
-    },
-  ],
-  images: [
-    {
-      type: String,
-      trim: true,
-    },
-  ],
+  requirements: [String],
+  included: [String],
+  excluded: [String],
+  images: [String],
   reviews: {
     rating: {
       type: Number,
@@ -416,6 +385,7 @@ const WeatherForecastSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    clothingAdvice: [String],
   },
   { _id: false }
 );
@@ -424,8 +394,7 @@ const BookingSchema = new mongoose.Schema(
   {
     // User Information
     userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      type: String, // Can be ObjectId or email for flexibility
       required: [true, "User ID is required"],
     },
     email: {
@@ -441,7 +410,7 @@ const BookingSchema = new mongoose.Schema(
       },
     },
 
-    // Trip Basic Information
+    // Trip Basic Information - PHASE 1
     destination: {
       type: String,
       required: [true, "Destination is required"],
@@ -449,7 +418,6 @@ const BookingSchema = new mongoose.Schema(
     },
     month: {
       type: String,
-      required: [true, "Month is required"],
       trim: true,
     },
     reason: {
@@ -458,19 +426,16 @@ const BookingSchema = new mongoose.Schema(
     },
     duration: {
       type: String,
-      required: [true, "Duration is required"],
       trim: true,
     },
     startDate: {
       type: Date,
-      required: [true, "Start date is required"],
     },
     endDate: {
       type: Date,
-      required: [true, "End date is required"],
     },
 
-    // Travel Details
+    // Travel Details - PHASE 2
     flight: {
       outbound: {
         type: FlightSchema,
@@ -483,31 +448,21 @@ const BookingSchema = new mongoose.Schema(
     },
     hotel: {
       type: HotelSchema,
-      required: [true, "Hotel information is required"],
+      default: null,
     },
-    activities: [ActivitySchema],
-    selectedActivities: [ActivitySchema],
+    activities: [String], // Simple list for Phase 1
+    selectedActivities: [ActivitySchema], // Detailed for Phase 2+
 
-    // Weather Information
+    // Weather Information - PHASE 3
     weather: [WeatherForecastSchema],
-    clothingAdvice: [
-      {
-        type: String,
-        trim: true,
-      },
-    ],
+    clothingAdvice: [String],
 
-    // Family-Friendly Features
+    // Family-Friendly Features - ALL PHASES
     hasChildren: {
       type: Boolean,
       default: false,
     },
-    childFriendlyFeatures: [
-      {
-        type: String,
-        trim: true,
-      },
-    ],
+    childFriendlyFeatures: [String],
     childrenAges: [
       {
         type: Number,
@@ -516,10 +471,9 @@ const BookingSchema = new mongoose.Schema(
       },
     ],
 
-    // Pricing Information
+    // Pricing Information - PHASE 1
     price: {
-      type: String,
-      required: [true, "Price is required"],
+      type: String, // Display format like "$2,500"
     },
     totalPrice: {
       type: Number,
@@ -566,25 +520,35 @@ const BookingSchema = new mongoose.Schema(
       },
     },
 
-    // Booking Status
-    status: {
+    // Passenger Information - PHASE 1
+    passengers: {
+      adults: { type: Number, default: 2 },
+      children: { type: Number, default: 0 },
+      infants: { type: Number, default: 0 },
+    },
+
+    // Payment Information - STRIPE ONLY
+    paymentMethod: {
       type: String,
-      enum: ["pending", "confirmed", "cancelled", "completed", "refunded"],
-      default: "pending",
+      enum: ["stripe"],
+      default: "stripe",
+      required: true,
     },
     paymentStatus: {
       type: String,
-      enum: ["pending", "paid", "failed", "refunded", "test_mode"],
+      enum: ["pending", "processing", "paid", "failed", "refunded"],
       default: "pending",
     },
-    paymentMethod: {
+    stripeSessionId: String,
+    stripePaymentIntentId: String,
+    stripeCustomerId: String,
+    paymentUrl: String,
+
+    // Booking Status
+    status: {
       type: String,
-      enum: ["credit_card", "debit_card", "paypal", "stripe", "test"],
-      default: null,
-    },
-    paymentReference: {
-      type: String,
-      trim: true,
+      enum: ["pending_payment", "confirmed", "cancelled", "completed"],
+      default: "pending_payment",
     },
 
     // Booking References
@@ -598,19 +562,7 @@ const BookingSchema = new mongoose.Schema(
       trim: true,
     },
 
-    // Additional Information
-    specialRequests: {
-      type: String,
-      trim: true,
-      maxlength: [1000, "Special requests cannot exceed 1000 characters"],
-    },
-    internalNotes: {
-      type: String,
-      trim: true,
-      maxlength: [2000, "Internal notes cannot exceed 2000 characters"],
-    },
-
-    // Traveler Information
+    // Traveler Information - PHASE 3
     travelers: [
       {
         type: {
@@ -620,12 +572,10 @@ const BookingSchema = new mongoose.Schema(
         },
         firstName: {
           type: String,
-          required: true,
           trim: true,
         },
         lastName: {
           type: String,
-          required: true,
           trim: true,
         },
         dateOfBirth: {
@@ -649,7 +599,18 @@ const BookingSchema = new mongoose.Schema(
       },
     ],
 
-    // Cancellation Information
+    // Additional Information
+    specialRequests: {
+      type: String,
+      trim: true,
+      maxlength: [1000, "Special requests cannot exceed 1000 characters"],
+    },
+    internalNotes: {
+      type: String,
+      trim: true,
+    },
+
+    // Cancellation Information - PHASE 3
     cancellation: {
       isCancelled: {
         type: Boolean,
@@ -659,8 +620,7 @@ const BookingSchema = new mongoose.Schema(
         type: Date,
       },
       cancelledBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
+        type: String,
       },
       reason: {
         type: String,
@@ -673,11 +633,10 @@ const BookingSchema = new mongoose.Schema(
       refundStatus: {
         type: String,
         enum: ["pending", "processed", "failed"],
-        default: null,
       },
     },
 
-    // Modification History
+    // Modification History - PHASE 3
     modifications: [
       {
         modifiedAt: {
@@ -685,8 +644,7 @@ const BookingSchema = new mongoose.Schema(
           default: Date.now,
         },
         modifiedBy: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "User",
+          type: String,
         },
         field: {
           type: String,
@@ -705,7 +663,7 @@ const BookingSchema = new mongoose.Schema(
       },
     ],
 
-    // Review and Rating
+    // Review and Rating - PHASE 3
     review: {
       rating: {
         type: Number,
@@ -733,25 +691,27 @@ const BookingSchema = new mongoose.Schema(
       enum: ["web", "mobile", "api", "admin"],
       default: "web",
     },
-    ipAddress: {
-      type: String,
-      trim: true,
+    destinationImage: String,
+    originalSearchQuery: String,
+    refinementHistory: [String],
+    searchData: Object,
+
+    // Timestamps
+    createdAt: {
+      type: Date,
+      default: Date.now,
     },
-    userAgent: {
-      type: String,
-      trim: true,
+    updatedAt: {
+      type: Date,
+      default: Date.now,
     },
-    sessionId: {
-      type: String,
-      trim: true,
-    },
+    paidAt: Date,
   },
   {
-    timestamps: true, // Adds createdAt and updatedAt automatically
+    timestamps: true,
     toJSON: {
       virtuals: true,
       transform: function (doc, ret) {
-        // Remove sensitive fields from JSON output
         delete ret.__v;
         return ret;
       },
@@ -762,7 +722,7 @@ const BookingSchema = new mongoose.Schema(
   }
 );
 
-// Indexes for better query performance
+// Indexes for performance
 BookingSchema.index({ userId: 1 });
 BookingSchema.index({ email: 1 });
 BookingSchema.index({ status: 1 });
@@ -771,13 +731,13 @@ BookingSchema.index({ destination: 1 });
 BookingSchema.index({ startDate: 1 });
 BookingSchema.index({ endDate: 1 });
 BookingSchema.index({ bookingReference: 1 }, { unique: true, sparse: true });
+BookingSchema.index({ stripeSessionId: 1 });
 BookingSchema.index({ createdAt: -1 });
 
 // Compound indexes
 BookingSchema.index({ userId: 1, status: 1 });
 BookingSchema.index({ email: 1, status: 1 });
 BookingSchema.index({ destination: 1, startDate: 1 });
-BookingSchema.index({ status: 1, createdAt: -1 });
 
 // Virtual fields
 BookingSchema.virtual("totalDays").get(function () {
@@ -785,6 +745,16 @@ BookingSchema.virtual("totalDays").get(function () {
   const diffTime = Math.abs(this.endDate - this.startDate);
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   return diffDays;
+});
+
+BookingSchema.virtual("totalPassengers").get(function () {
+  return (
+    this.passengers.adults + this.passengers.children + this.passengers.infants
+  );
+});
+
+BookingSchema.virtual("isFamilyTrip").get(function () {
+  return this.passengers.children > 0 || this.passengers.infants > 0;
 });
 
 BookingSchema.virtual("isUpcoming").get(function () {
@@ -795,24 +765,11 @@ BookingSchema.virtual("isPast").get(function () {
   return this.endDate < new Date();
 });
 
-BookingSchema.virtual("isActive").get(function () {
-  const now = new Date();
-  return this.startDate <= now && this.endDate >= now;
-});
-
 BookingSchema.virtual("canCancel").get(function () {
   return (
     this.status === "confirmed" &&
     this.isUpcoming &&
-    !this.cancellation.isCancelled
-  );
-});
-
-BookingSchema.virtual("canModify").get(function () {
-  return (
-    this.status === "confirmed" &&
-    this.isUpcoming &&
-    !this.cancellation.isCancelled
+    !this.cancellation?.isCancelled
   );
 });
 
@@ -825,6 +782,8 @@ BookingSchema.virtual("daysUntilTrip").get(function () {
 
 // Pre-save middleware
 BookingSchema.pre("save", function (next) {
+  this.updatedAt = new Date();
+
   // Generate booking reference if not exists
   if (!this.bookingReference) {
     const timestamp = Date.now().toString(36);
@@ -845,209 +804,66 @@ BookingSchema.pre("save", function (next) {
       (breakdown.discounts || 0);
   }
 
-  // Validate date range
-  if (this.startDate && this.endDate && this.startDate >= this.endDate) {
-    return next(new Error("End date must be after start date"));
-  }
-
-  // Validate hotel check-in/out dates match trip dates
-  if (this.hotel && this.hotel.checkIn && this.hotel.checkOut) {
-    if (
-      this.hotel.checkIn < this.startDate ||
-      this.hotel.checkOut > this.endDate
-    ) {
-      return next(new Error("Hotel dates must be within trip dates"));
-    }
-  }
+  // Set family flags
+  this.hasChildren =
+    this.passengers.children > 0 || this.passengers.infants > 0;
 
   next();
 });
 
-// Post-save middleware
-BookingSchema.post("save", async function (doc) {
-  // Update user stats when booking is created
-  if (this.isNew) {
-    try {
-      const User = mongoose.model("User");
-      await User.findByIdAndUpdate(doc.userId, {
-        $inc: {
-          "stats.totalBookings": 1,
-          "stats.totalSpent": doc.totalPrice || 0,
-        },
-        $addToSet: { "stats.countriesVisited": doc.destination },
-      });
-    } catch (error) {
-      console.error("Error updating user stats:", error);
-    }
-  }
-});
-
-// Static methods
-BookingSchema.statics.findByUser = function (userId) {
-  return this.find({ userId }).sort({ createdAt: -1 });
+// Instance methods
+BookingSchema.methods.markAsPaid = function (paymentIntentId) {
+  this.paymentStatus = "paid";
+  this.status = "confirmed";
+  this.stripePaymentIntentId = paymentIntentId;
+  this.paidAt = new Date();
+  return this.save();
 };
 
+BookingSchema.methods.markAsFailed = function () {
+  this.paymentStatus = "failed";
+  this.status = "pending_payment";
+  return this.save();
+};
+
+BookingSchema.methods.cancel = function (reason, cancelledBy) {
+  this.cancellation = {
+    isCancelled: true,
+    cancelledAt: new Date(),
+    reason: reason,
+    cancelledBy: cancelledBy,
+  };
+  this.status = "cancelled";
+  return this.save();
+};
+
+BookingSchema.methods.addReview = function (rating, comment) {
+  this.review = {
+    rating: rating,
+    comment: comment,
+    reviewedAt: new Date(),
+  };
+  return this.save();
+};
+
+// Static methods
 BookingSchema.statics.findByEmail = function (email) {
   return this.find({ email: email.toLowerCase() }).sort({ createdAt: -1 });
+};
+
+BookingSchema.statics.findByUserId = function (userId) {
+  return this.find({ userId }).sort({ createdAt: -1 });
 };
 
 BookingSchema.statics.findUpcoming = function (userId = null) {
   const query = {
     startDate: { $gt: new Date() },
-    status: { $in: ["confirmed", "pending"] },
+    status: { $in: ["confirmed", "pending_payment"] },
     "cancellation.isCancelled": { $ne: true },
   };
-
-  if (userId) {
-    query.userId = userId;
-  }
-
+  if (userId) query.userId = userId;
   return this.find(query).sort({ startDate: 1 });
 };
 
-BookingSchema.statics.findPast = function (userId = null) {
-  const query = {
-    endDate: { $lt: new Date() },
-    status: { $in: ["confirmed", "completed"] },
-  };
-
-  if (userId) {
-    query.userId = userId;
-  }
-
-  return this.find(query).sort({ endDate: -1 });
-};
-
-BookingSchema.statics.findByDestination = function (destination) {
-  return this.find({
-    destination: new RegExp(destination, "i"),
-    status: { $in: ["confirmed", "completed"] },
-  }).sort({ createdAt: -1 });
-};
-
-BookingSchema.statics.getBookingStats = async function () {
-  const stats = await this.aggregate([
-    {
-      $group: {
-        _id: null,
-        totalBookings: { $sum: 1 },
-        confirmedBookings: {
-          $sum: { $cond: [{ $eq: ["$status", "confirmed"] }, 1, 0] },
-        },
-        cancelledBookings: {
-          $sum: { $cond: [{ $eq: ["$status", "cancelled"] }, 1, 0] },
-        },
-        totalRevenue: { $sum: "$totalPrice" },
-        averageBookingValue: { $avg: "$totalPrice" },
-        topDestinations: { $push: "$destination" },
-      },
-    },
-  ]);
-
-  return (
-    stats[0] || {
-      totalBookings: 0,
-      confirmedBookings: 0,
-      cancelledBookings: 0,
-      totalRevenue: 0,
-      averageBookingValue: 0,
-      topDestinations: [],
-    }
-  );
-};
-
-// Instance methods
-BookingSchema.methods.cancel = function (reason, cancelledBy) {
-  this.cancellation.isCancelled = true;
-  this.cancellation.cancelledAt = new Date();
-  this.cancellation.reason = reason;
-  this.cancellation.cancelledBy = cancelledBy;
-  this.status = "cancelled";
-
-  return this.save();
-};
-
-BookingSchema.methods.confirm = function () {
-  this.status = "confirmed";
-  this.paymentStatus = "paid";
-
-  return this.save();
-};
-
-BookingSchema.methods.complete = function () {
-  this.status = "completed";
-
-  return this.save();
-};
-
-BookingSchema.methods.addReview = function (rating, comment) {
-  this.review.rating = rating;
-  this.review.comment = comment;
-  this.review.reviewedAt = new Date();
-
-  return this.save();
-};
-
-BookingSchema.methods.addModification = function (
-  field,
-  oldValue,
-  newValue,
-  reason,
-  modifiedBy
-) {
-  this.modifications.push({
-    field,
-    oldValue,
-    newValue,
-    reason,
-    modifiedBy,
-    modifiedAt: new Date(),
-  });
-
-  return this.save();
-};
-
-BookingSchema.methods.calculateRefund = function () {
-  if (!this.canCancel) return 0;
-
-  const daysUntilTrip = this.daysUntilTrip;
-  let refundPercentage = 0;
-
-  // Refund policy based on days until trip
-  if (daysUntilTrip >= 30) {
-    refundPercentage = 0.9; // 90% refund
-  } else if (daysUntilTrip >= 14) {
-    refundPercentage = 0.75; // 75% refund
-  } else if (daysUntilTrip >= 7) {
-    refundPercentage = 0.5; // 50% refund
-  } else if (daysUntilTrip >= 3) {
-    refundPercentage = 0.25; // 25% refund
-  } else {
-    refundPercentage = 0; // No refund
-  }
-
-  return Math.round(this.totalPrice * refundPercentage);
-};
-
-BookingSchema.methods.isOwnedBy = function (userId) {
-  return this.userId.toString() === userId.toString();
-};
-
-BookingSchema.methods.hasEmail = function (email) {
-  return this.email.toLowerCase() === email.toLowerCase();
-};
-
-// Error handling
-BookingSchema.post("save", function (error, doc, next) {
-  if (error.name === "MongoServerError" && error.code === 11000) {
-    const field = Object.keys(error.keyPattern)[0];
-    const message = `${field.charAt(0).toUpperCase() + field.slice(1)} already exists`;
-    next(new Error(message));
-  } else {
-    next(error);
-  }
-});
-
-// Create model only if it doesn't exist (prevents re-compilation errors)
 export default mongoose.models.Booking ||
   mongoose.model("Booking", BookingSchema);

@@ -2,7 +2,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "../../auth/[...nextauth]";
 import dbConnect from "@/lib/mongodb";
-import User from "@/oldFile/models/User";
+import User from "@/models/User";
 
 export default async function handler(req, res) {
   const session = await getServerSession(req, res, authOptions);
