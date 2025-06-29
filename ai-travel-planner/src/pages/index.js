@@ -22,6 +22,7 @@ import {
   FaHotel,
 } from "react-icons/fa";
 import { MdChildCare, MdLuggage, MdFlight } from "react-icons/md";
+import { HeroBGIMG } from "../../config/image";
 
 // Keep all the existing animations
 const fadeIn = keyframes`
@@ -195,9 +196,15 @@ const HeroSection = styled.section`
     #667eea 100%
   );
   background-size: 400% 400%;
+  background-image: ${HeroBGIMG};
   animation: ${gradient} 15s ease infinite;
   position: relative;
   overflow: hidden;
+  /* 
+ background-image: url(${HeroBGIMG});
+  background-position: center bottom;
+  background-repeat: no-repeat;
+  background-size: cover; */
 
   &::before {
     content: "";
@@ -1317,8 +1324,6 @@ export default function Home() {
               {passOpen ? <FiChevronUp /> : <FiChevronDown />}
             </HeroPassengersButton>
 
-            {passOpen && <PassengerDropdown />}
-
             <HeroSearchButton
               onClick={handleSearch}
               disabled={loading || !query.trim()}
@@ -1328,7 +1333,7 @@ export default function Home() {
               {loading ? "Searching..." : "Search"}
             </HeroSearchButton>
           </HeroSearchContainer>
-
+          {passOpen && <PassengerDropdown />}
           {query && (
             <SearchPreservationNote>
               <FiSearch />

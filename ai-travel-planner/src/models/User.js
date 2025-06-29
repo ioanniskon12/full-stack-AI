@@ -440,7 +440,7 @@ const UserSchema = new mongoose.Schema(
 );
 
 // Indexes for better query performance
-UserSchema.index({ email: 1 }, { unique: true });
+// UserSchema.index({ email: 1 }, { unique: true });
 UserSchema.index({ role: 1 });
 UserSchema.index({ emailVerified: 1 });
 UserSchema.index({ createdAt: -1 });
